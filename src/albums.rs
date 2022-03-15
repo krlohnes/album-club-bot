@@ -5,14 +5,10 @@ use serenity::async_trait;
 
 static DOC_LINK: &str = "https://docs.google.com/spreadsheets/d/1uZBSuuw_oxiR3Lr3MS8lNom2HlUz6_O0Nb6yZA0Vzy4/edit?usp=sharing";
 lazy_static! {
-    static ref CLIENT_ID: String = {
-        std::env::var("GAPI_CLIENT_ID").expect("GAPI_CLIENT_ID is a required environment variable")
+    static ref CREDS_JSON_PATH: String = {
+        std::env::var("CREDS_JSON_PATH")
+            .expect("CREDS_JSON_PATH is a required environment variable")
     };
-
-    static ref KEY: String = {
-        std::env::var("GAPI_KEY").expect("GAPI_KEY is a required environment variable")
-    };
-
 }
 
 #[derive(Clone, Debug)]
@@ -62,8 +58,5 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
 mod test {
 
     #[tokio::test]
-    async fn test_getting_rows() {
-
-    }
-
+    async fn test_getting_rows() {}
 }
