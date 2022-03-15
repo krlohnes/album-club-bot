@@ -1,25 +1,31 @@
-use serenity::async_trait;
-use serenity::client::{Client, Context, EventHandler};
-use serenity::model::channel::Message;
-use serenity::framework::standard::{
-    StandardFramework,
-    CommandResult,
-    macros::{
-        command,
-        group
-    }
-};
+mod albums;
 
 use std::env;
 
+use crate::albums::{AlbumRepo, GoogleSheetsAlbumRepo};
+
+use serenity::async_trait;
+use serenity::client::{Client, Context, EventHandler};
+use serenity::framework::standard::{macros::group, StandardFramework};
+use serenity::model::channel::Message;
+
 #[group]
-#[commands(ping)]
 struct General;
 
-struct Handler;
+struct AlbumHandler {
+    album_repo: Box<dyn AlbumRepo + Send + Sync>,
+}
 
 #[async_trait]
-impl EventHandler for Handler {}
+impl EventHandler for AlbumHandler {
+    async fn message(&self, ctx: Context, msg: Message) {
+        if let Some(_) = msg.content.strip_prefix("~album next") {
+            let album = self.album_repo.fetch_random_album().await;
+            let response = format!("The next album is {}", album);
+            msg.channel_id.say(&ctx, response).await.unwrap();
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -29,8 +35,11 @@ async fn main() {
 
     // Login with a bot token from the environment
     let token = env::var("DISCORD_TOKEN").expect("token");
+    let handler = AlbumHandler {
+        album_repo: Box::new(GoogleSheetsAlbumRepo::default()),
+    };
     let mut client = Client::builder(token)
-        .event_handler(Handler)
+        .event_handler(handler)
         .framework(framework)
         .await
         .expect("Error creating client");
@@ -39,10 +48,4 @@ async fn main() {
     if let Err(why) = client.start().await {
         println!("An error occurred while running the client: {:?}", why);
     }
-}
-
-#[command]
-async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(ctx, "Pong!").await?;
-    Ok(())
 }
