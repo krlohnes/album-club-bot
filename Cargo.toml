@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 serenity = "0.10.10"
 google-sheets4 = "3.0.0"
+lazy_static = "1" 
 tokio = {version = "1", features = ["rt-multi-thread"]}
