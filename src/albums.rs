@@ -6,11 +6,11 @@ use serenity::async_trait;
 static DOC_LINK: &str = "https://docs.google.com/spreadsheets/d/1uZBSuuw_oxiR3Lr3MS8lNom2HlUz6_O0Nb6yZA0Vzy4/edit?usp=sharing";
 lazy_static! {
     static ref CLIENT_ID: String = {
-        std::env::var("GAPI_CLIENT_ID").expect("GAPI_CLIENT_ID is a required environment variable");
+        std::env::var("GAPI_CLIENT_ID").expect("GAPI_CLIENT_ID is a required environment variable")
     };
 
     static ref KEY: String = {
-        std::env::var("GAPI_KEY").expect("GAPI_KEY is a required environment variable");
+        std::env::var("GAPI_KEY").expect("GAPI_KEY is a required environment variable")
     };
 
 }
