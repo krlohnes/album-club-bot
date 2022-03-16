@@ -1,9 +1,9 @@
 use std::fmt::{Display, Formatter};
 
 use anyhow::Result;
+use google_sheets4::{hyper, hyper_rustls, oauth2, Sheets};
 use lazy_static::lazy_static;
 use serenity::async_trait;
-use google_sheets4::{Sheets, oauth2, hyper, hyper_rustls};
 
 static DOC_LINK: &str = "https://docs.google.com/spreadsheets/d/1uZBSuuw_oxiR3Lr3MS8lNom2HlUz6_O0Nb6yZA0Vzy4/edit?usp=sharing";
 lazy_static! {
@@ -36,16 +36,24 @@ pub trait AlbumRepo {
     async fn fetch_random_album(&self) -> Album;
 }
 
-pub struct GoogleSheetsAlbumRepo;
+pub struct GoogleSheetsAlbumRepo {
+    hub: Sheets,
+}
 
 impl GoogleSheetsAlbumRepo {
     pub async fn default() -> Result<Self> {
         let service_account_key = oauth2::read_service_account_key(CREDS_JSON_PATH.clone()).await?;
         let auth = oauth2::ServiceAccountAuthenticator::builder(service_account_key)
-        .build()
-        .await
-        .expect("failed to create authenticator");
-        Ok(GoogleSheetsAlbumRepo)
+            .build()
+            .await
+            .expect("failed to create authenticator");
+        let hub = Sheets::new(
+            hyper::Client::builder().build(hyper_rustls::HttpsConnector::with_native_roots()),
+            auth,
+        );
+        Ok(GoogleSheetsAlbumRepo {
+            hub
+        })
     }
 }
 
