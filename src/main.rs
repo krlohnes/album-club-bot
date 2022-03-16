@@ -36,7 +36,7 @@ async fn main() {
     // Login with a bot token from the environment
     let token = env::var("DISCORD_TOKEN").expect("token");
     let handler = AlbumHandler {
-        album_repo: Box::new(GoogleSheetsAlbumRepo::default()),
+        album_repo: Box::new(GoogleSheetsAlbumRepo::default().await.unwrap()),
     };
     let mut client = Client::builder(token)
         .event_handler(handler)
