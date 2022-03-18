@@ -97,6 +97,7 @@ impl GoogleSheetsAlbumRepo {
             .as_ref()
             .ok_or_else(|| anyhow!("Error getting cell values"))?;
 
+        //TODO: Remove unwraps. This _should_ be fine for now, but error handling could be better
         let random_album = Album {
             name: values[1]
                 .effective_value
