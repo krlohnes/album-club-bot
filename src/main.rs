@@ -4,6 +4,7 @@ use std::env;
 
 use crate::albums::{AlbumRepo, GoogleSheetsAlbumRepo};
 
+use log::error;
 use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
 use serenity::framework::standard::{macros::group, StandardFramework};
@@ -16,11 +17,24 @@ struct AlbumHandler {
     album_repo: Box<dyn AlbumRepo + Send + Sync>,
 }
 
+const ERROR_RESPONSE_FETCH_RANDOM: &str = "Try again later!";
+
 #[async_trait]
 impl EventHandler for AlbumHandler {
     async fn message(&self, ctx: Context, msg: Message) {
         if let Some(_) = msg.content.strip_prefix("~album next") {
-            let album = self.album_repo.fetch_random_album().await;
+            let album = match self.album_repo.fetch_random_album().await {
+                Ok(album) => album,
+                Err(e) => {
+                    error!("Error getting a random album {:?}", e);
+                    msg.channel_id
+                        .say(&ctx, ERROR_RESPONSE_FETCH_RANDOM.clone())
+                        .await
+                        .map_err(|e| error!("Error sending message back to channel {:?}", e))
+                        .ok();
+                    return;
+                }
+            };
             let response = format!("The next album is {}", album);
             msg.channel_id.say(&ctx, response).await.unwrap();
         }
@@ -29,6 +43,7 @@ impl EventHandler for AlbumHandler {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let framework = StandardFramework::new()
         .configure(|c| c.prefix("~")) // set the bot's prefix to "~"
         .group(&GENERAL_GROUP);
