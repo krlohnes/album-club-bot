@@ -70,21 +70,66 @@ impl GoogleSheetsAlbumRepo {
     }
 
     async fn select_random_album(&self, spreadsheet: Spreadsheet) -> Result<Album> {
-        let sheets = spreadsheet.sheets.ok_or_else(|| anyhow!("No sheets on spreadsheet"))?;
-        let sheet = sheets.get(0).ok_or_else(|| anyhow!("Empty vec of sheets"))?;
-        let data = sheet.data.as_ref().ok_or_else(|| anyhow!("Error getting sheet data"))?;
-        let data = data.get(0).ok_or_else(|| anyhow!("Error parsing sheet, unexpected data length"))?;
-        let row_data = data.row_data.as_ref().ok_or_else(|| anyhow!("Row data does not exist"))?;
+        let sheets = spreadsheet
+            .sheets
+            .ok_or_else(|| anyhow!("No sheets on spreadsheet"))?;
+        let sheet = sheets
+            .get(0)
+            .ok_or_else(|| anyhow!("Empty vec of sheets"))?;
+        let data = sheet
+            .data
+            .as_ref()
+            .ok_or_else(|| anyhow!("Error getting sheet data"))?;
+        let data = data
+            .get(0)
+            .ok_or_else(|| anyhow!("Error parsing sheet, unexpected data length"))?;
+        let row_data = data
+            .row_data
+            .as_ref()
+            .ok_or_else(|| anyhow!("Row data does not exist"))?;
         let row_count = row_data.len();
         let num = rand::thread_rng().gen_range(0..row_count);
-        let rand_row_data = row_data.get(num).ok_or_else(|| anyhow!("Generated out of range random number for row data"))?;
-        let values = &rand_row_data.values.as_ref().ok_or_else(|| anyhow!("Error getting cell values"))?;
+        let rand_row_data = row_data
+            .get(num)
+            .ok_or_else(|| anyhow!("Generated out of range random number for row data"))?;
+        let values = &rand_row_data
+            .values
+            .as_ref()
+            .ok_or_else(|| anyhow!("Error getting cell values"))?;
 
         let random_album = Album {
-            name: values[1].effective_value.as_ref().unwrap().string_value.as_ref().unwrap().to_owned(),
-            artist: values[0].effective_value.as_ref().unwrap().string_value.as_ref().unwrap().to_owned(),
-            genre: (values[2].effective_value.as_ref().unwrap().string_value.as_ref().unwrap()).to_owned(),
-            added_by: (values[3].effective_value.as_ref().unwrap().string_value.as_ref().unwrap()).to_owned(),
+            name: values[1]
+                .effective_value
+                .as_ref()
+                .unwrap()
+                .string_value
+                .as_ref()
+                .unwrap()
+                .to_owned(),
+            artist: values[0]
+                .effective_value
+                .as_ref()
+                .unwrap()
+                .string_value
+                .as_ref()
+                .unwrap()
+                .to_owned(),
+            genre: (values[2]
+                .effective_value
+                .as_ref()
+                .unwrap()
+                .string_value
+                .as_ref()
+                .unwrap())
+            .to_owned(),
+            added_by: (values[3]
+                .effective_value
+                .as_ref()
+                .unwrap()
+                .string_value
+                .as_ref()
+                .unwrap())
+            .to_owned(),
         };
         Ok(random_album)
     }
