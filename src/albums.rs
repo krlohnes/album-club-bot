@@ -155,6 +155,7 @@ mod test {
     use super::*;
 
     //#[tokio::test]
+    #[allow(dead_code)]
     async fn test_getting_rows() -> Result<()> {
         env_logger::init();
         let repo: Box<dyn AlbumRepo> = Box::new(GoogleSheetsAlbumRepo::default().await?);
