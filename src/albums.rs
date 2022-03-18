@@ -24,7 +24,7 @@ lazy_static! {
     static ref GET_ALBUMS_REQUEST: GetSpreadsheetByDataFilterRequest =
         GetSpreadsheetByDataFilterRequest {
             data_filters: Some(vec![GET_ALBUMS.clone()]),
-            include_grid_data: None,
+            include_grid_data: Some(true),
         };
 }
 
@@ -83,6 +83,7 @@ impl GoogleSheetsAlbumRepo {
         let data = data
             .get(0)
             .ok_or_else(|| anyhow!("Error parsing sheet, unexpected data length"))?;
+
         let row_data = data
             .row_data
             .as_ref()
@@ -151,6 +152,21 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
 
 #[cfg(test)]
 mod test {
-    #[tokio::test]
-    async fn test_getting_rows() {}
+    use super::*;
+
+    //#[tokio::test]
+    async fn test_getting_rows() -> Result<()> {
+        env_logger::init();
+        let repo: Box<dyn AlbumRepo> = Box::new(GoogleSheetsAlbumRepo::default().await?);
+
+        let album = match repo.fetch_random_album().await {
+            Ok(a) => a,
+            Err(e) => {
+                println!("{:?}", e);
+                return Err(e);
+            }
+        };
+        println!("{}", album);
+        Ok(())
+    }
 }
