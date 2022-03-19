@@ -173,18 +173,17 @@ impl GoogleSheetsAlbumRepo {
             .ok_or_else(|| anyhow!("Unable to get row data for random album"))?;
         let row_count = row_data.len();
         let num = rand::thread_rng().gen_range(0..row_count);
-        let rand_row_data = row_data
+        let values = row_data
             .get(num)
-            .ok_or_else(|| anyhow!("Generated out of range random number for row data"))?;
-        let values = &rand_row_data
-            .values
             .as_ref()
+            .and_then(|value| value.values.as_ref())
             .ok_or_else(|| anyhow!("Error getting cell values"))?;
-        let name = self
-            .get_value_from_cell_data(1, values, "Unable to get album name".to_owned())
-            .await?;
+
         let artist = self
             .get_value_from_cell_data(0, values, "Unable to get album artist".to_owned())
+            .await?;
+        let name = self
+            .get_value_from_cell_data(1, values, "Unable to get album name".to_owned())
             .await?;
         let genre = self
             .get_value_from_cell_data(2, values, "Unable to get album genre".to_owned())
