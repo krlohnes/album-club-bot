@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use anyhow::{anyhow, Result};
@@ -16,6 +17,16 @@ lazy_static! {
 }
 
 lazy_static! {
+    static ref GET_ROTATION: DataFilter = DataFilter {
+        a1_range: Some("Rotation!A1:A4".to_owned()),
+        developer_metadata_lookup: None,
+        grid_range: None,
+    };
+    static ref GET_ROTATION_REQUEST: GetSpreadsheetByDataFilterRequest =
+        GetSpreadsheetByDataFilterRequest {
+            data_filters: Some(vec![GET_ROTATION.clone()]),
+            include_grid_data: Some(true),
+        };
     static ref GET_ALBUMS: DataFilter = DataFilter {
         a1_range: Some("Album Selection!A2:D".to_owned()),
         developer_metadata_lookup: None,
@@ -69,9 +80,53 @@ impl GoogleSheetsAlbumRepo {
         Ok(GoogleSheetsAlbumRepo { hub })
     }
 
-    async fn select_random_album(&self, spreadsheet: Spreadsheet) -> Result<Album> {
+    async fn get_rotation(&self) -> Result<HashSet<String>> {
+        let (_, spreadsheet) = self
+            .hub
+            .spreadsheets()
+            .get_by_data_filter(GET_ROTATION_REQUEST.clone(), DOC_ID)
+            .doit()
+            .await?;
         let sheets = spreadsheet
             .sheets
+            .ok_or_else(|| anyhow!("No sheets on spreadsheet"))?;
+        let sheet = sheets
+            .get(0)
+            .ok_or_else(|| anyhow!("Empty vec of sheets"))?;
+        let data = sheet
+            .data
+            .as_ref()
+            .ok_or_else(|| anyhow!("Error getting sheet data"))?;
+        let data = data
+            .get(0)
+            .ok_or_else(|| anyhow!("Error parsing sheet, unexpected data length"))?;
+        let mut names: HashSet<String> = HashSet::with_capacity(4 as usize);
+        if let Some(row_data) = data.row_data.as_ref() {
+            for name in row_data {
+                if let Some(values) = name.values.as_ref() {
+                    names.insert(
+                        values
+                            .get(0)
+                            .as_ref()
+                            .unwrap()
+                            .effective_value
+                            .as_ref()
+                            .unwrap()
+                            .string_value
+                            .as_ref()
+                            .unwrap()
+                            .to_owned(),
+                    );
+                };
+            }
+        }
+        Ok(names)
+    }
+
+    async fn select_random_album(&self, spreadsheet: &Spreadsheet) -> Result<Album> {
+        let sheets = spreadsheet
+            .sheets
+            .as_ref()
             .ok_or_else(|| anyhow!("No sheets on spreadsheet"))?;
         let sheet = sheets
             .get(0)
@@ -146,7 +201,16 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
             .get_by_data_filter(GET_ALBUMS_REQUEST.clone(), DOC_ID)
             .doit()
             .await?;
-        self.select_random_album(spreadsheet).await
+        let rotation = self.get_rotation().await?;
+        let album: Album;
+        loop {
+            let try_album = self.select_random_album(&spreadsheet).await?;
+            if !rotation.contains(&try_album.added_by) {
+                album = try_album;
+                break;
+            }
+        }
+        Ok(album)
     }
 }
 
@@ -155,6 +219,23 @@ mod test {
     use super::*;
 
     //#[tokio::test]
+    #[allow(dead_code)]
+    async fn test_getting_rotation() -> Result<()> {
+        env_logger::init();
+        let repo = GoogleSheetsAlbumRepo::default().await?;
+
+        let album = match repo.get_rotation().await {
+            Ok(a) => a,
+            Err(e) => {
+                println!("{:?}", e);
+                return Err(e);
+            }
+        };
+        println!("{:?}", album);
+        Ok(())
+    }
+
+    #[tokio::test]
     #[allow(dead_code)]
     async fn test_getting_rows() -> Result<()> {
         env_logger::init();
