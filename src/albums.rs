@@ -17,9 +17,6 @@ lazy_static! {
         std::env::var("SHEET_ID_ALBUM_BOT")
             .expect("SHEET_ID_ALBUM_BOT is a required environment variable")
     };
-}
-
-lazy_static! {
     static ref GET_LAST_GENRE: DataFilter = DataFilter {
         a1_range: Some("Ratings!C2".to_owned()),
         developer_metadata_lookup: None,
