@@ -219,9 +219,10 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
             .await?;
         let rotation = self.get_rotation().await?;
         let album: Album;
+        let last_genre = self.get_last_genre().await?;
         loop {
             let try_album = self.select_random_album(&spreadsheet).await?;
-            if !rotation.contains(&try_album.added_by) {
+            if !rotation.contains(&try_album.added_by) && try_album.genre != last_genre {
                 album = try_album;
                 break;
             }
