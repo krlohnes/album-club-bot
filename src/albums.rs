@@ -17,6 +17,16 @@ lazy_static! {
 }
 
 lazy_static! {
+    static ref GET_LAST_GENRE: DataFilter = DataFilter {
+        a1_range: Some("Ratings!C2".to_owned()),
+        developer_metadata_lookup: None,
+        grid_range: None,
+    };
+    static ref GET_LAST_GENRE_REQUEST: GetSpreadsheetByDataFilterRequest =
+        GetSpreadsheetByDataFilterRequest {
+            data_filters: Some(vec![GET_LAST_GENRE.clone()]),
+            include_grid_data: Some(true),
+        };
     static ref GET_ROTATION: DataFilter = DataFilter {
         a1_range: Some("Rotation!A1:A4".to_owned()),
         developer_metadata_lookup: None,
@@ -80,6 +90,29 @@ impl GoogleSheetsAlbumRepo {
         Ok(GoogleSheetsAlbumRepo { hub })
     }
 
+    async fn get_last_genre(&self) -> Result<String> {
+        let (_, spreadsheet) = self
+            .hub
+            .spreadsheets()
+            .get_by_data_filter(GET_LAST_GENRE_REQUEST.clone(), DOC_ID)
+            .doit()
+            .await?;
+        let genre = spreadsheet
+            .sheets
+            .as_ref()
+            .and_then(|sheets| sheets.get(0))
+            .and_then(|sheet| sheet.data.as_ref())
+            .and_then(|data| data.get(0))
+            .and_then(|row| row.row_data.as_ref())
+            .and_then(|row_data| row_data.get(0))
+            .and_then(|cells| cells.values.as_ref())
+            .and_then(|cell_values| cell_values.get(0))
+            .and_then(|cell_value| cell_value.effective_value.as_ref())
+            .and_then(|effective_value| effective_value.string_value.to_owned())
+            .ok_or_else(|| anyhow!("Unable to get last genre"))?;
+        Ok(genre)
+    }
+
     async fn get_rotation(&self) -> Result<HashSet<String>> {
         let (_, spreadsheet) = self
             .hub
@@ -87,19 +120,13 @@ impl GoogleSheetsAlbumRepo {
             .get_by_data_filter(GET_ROTATION_REQUEST.clone(), DOC_ID)
             .doit()
             .await?;
-        let sheets = spreadsheet
+        let data = spreadsheet
             .sheets
-            .ok_or_else(|| anyhow!("No sheets on spreadsheet"))?;
-        let sheet = sheets
-            .get(0)
-            .ok_or_else(|| anyhow!("Empty vec of sheets"))?;
-        let data = sheet
-            .data
             .as_ref()
-            .ok_or_else(|| anyhow!("Error getting sheet data"))?;
-        let data = data
-            .get(0)
-            .ok_or_else(|| anyhow!("Error parsing sheet, unexpected data length"))?;
+            .and_then(|sheets| sheets.get(0))
+            .and_then(|sheet| sheet.data.as_ref())
+            .and_then(|data| data.get(0))
+            .ok_or_else(|| anyhow!("Unable to get data for rotation"))?;
         let mut names: HashSet<String> = HashSet::with_capacity(4 as usize);
         if let Some(row_data) = data.row_data.as_ref() {
             for name in row_data {
@@ -124,25 +151,14 @@ impl GoogleSheetsAlbumRepo {
     }
 
     async fn select_random_album(&self, spreadsheet: &Spreadsheet) -> Result<Album> {
-        let sheets = spreadsheet
+        let row_data = spreadsheet
             .sheets
             .as_ref()
-            .ok_or_else(|| anyhow!("No sheets on spreadsheet"))?;
-        let sheet = sheets
-            .get(0)
-            .ok_or_else(|| anyhow!("Empty vec of sheets"))?;
-        let data = sheet
-            .data
-            .as_ref()
-            .ok_or_else(|| anyhow!("Error getting sheet data"))?;
-        let data = data
-            .get(0)
-            .ok_or_else(|| anyhow!("Error parsing sheet, unexpected data length"))?;
-
-        let row_data = data
-            .row_data
-            .as_ref()
-            .ok_or_else(|| anyhow!("Row data does not exist"))?;
+            .and_then(|sheets| sheets.get(0))
+            .and_then(|sheet| sheet.data.as_ref())
+            .and_then(|data| data.get(0))
+            .and_then(|row| row.row_data.as_ref())
+            .ok_or_else(|| anyhow!("Unable to get row data for random album"))?;
         let row_count = row_data.len();
         let num = rand::thread_rng().gen_range(0..row_count);
         let rand_row_data = row_data
@@ -235,7 +251,7 @@ mod test {
         Ok(())
     }
 
-    #[tokio::test]
+    //#[tokio::test]
     #[allow(dead_code)]
     async fn test_getting_rows() -> Result<()> {
         env_logger::init();

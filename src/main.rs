@@ -41,6 +41,7 @@ impl EventHandler for AlbumHandler {
     }
 }
 
+//https://discordapp.com/oauth2/authorize?client_id=%3cBot_Client_ID%3e&scope=bot&permissions=0
 #[tokio::main]
 async fn main() {
     env_logger::init();
