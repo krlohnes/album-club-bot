@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use anyhow::{anyhow, Result};
-use google_sheets4::api::{DataFilter, GetSpreadsheetByDataFilterRequest, Spreadsheet};
+use google_sheets4::api::{CellData, DataFilter, GetSpreadsheetByDataFilterRequest, Spreadsheet};
 use google_sheets4::{hyper, hyper_rustls, oauth2, Sheets};
 use lazy_static::lazy_static;
 use rand::Rng;
@@ -135,22 +135,31 @@ impl GoogleSheetsAlbumRepo {
             for name in row_data {
                 if let Some(values) = name.values.as_ref() {
                     names.insert(
-                        values
-                            .get(0)
-                            .as_ref()
-                            .unwrap()
-                            .effective_value
-                            .as_ref()
-                            .unwrap()
-                            .string_value
-                            .as_ref()
-                            .unwrap()
-                            .to_owned(),
+                        self.get_value_from_cell_data(
+                            0,
+                            values,
+                            "Unable to get name from rotation sheet".to_owned(),
+                        )
+                        .await?,
                     );
                 };
             }
         }
         Ok(names)
+    }
+
+    async fn get_value_from_cell_data(
+        &self,
+        cell_position: usize,
+        cell_data: &Vec<CellData>,
+        error_msg: String,
+    ) -> Result<String> {
+        cell_data
+            .get(cell_position)
+            .and_then(|value| value.effective_value.as_ref())
+            .and_then(|effective_value| effective_value.string_value.as_ref())
+            .and_then(|string_value| Some(string_value.to_owned()))
+            .ok_or_else(|| anyhow!(error_msg))
     }
 
     async fn select_random_album(&self, spreadsheet: &Spreadsheet) -> Result<Album> {
@@ -171,41 +180,24 @@ impl GoogleSheetsAlbumRepo {
             .values
             .as_ref()
             .ok_or_else(|| anyhow!("Error getting cell values"))?;
+        let name = self
+            .get_value_from_cell_data(1, values, "Unable to get album name".to_owned())
+            .await?;
+        let artist = self
+            .get_value_from_cell_data(0, values, "Unable to get album artist".to_owned())
+            .await?;
+        let genre = self
+            .get_value_from_cell_data(2, values, "Unable to get album genre".to_owned())
+            .await?;
+        let added_by = self
+            .get_value_from_cell_data(3, values, "Unable to get album added_by".to_owned())
+            .await?;
 
-        //TODO: Remove unwraps. This _should_ be fine for now, but error handling could be better
         let random_album = Album {
-            name: values[1]
-                .effective_value
-                .as_ref()
-                .unwrap()
-                .string_value
-                .as_ref()
-                .unwrap()
-                .to_owned(),
-            artist: values[0]
-                .effective_value
-                .as_ref()
-                .unwrap()
-                .string_value
-                .as_ref()
-                .unwrap()
-                .to_owned(),
-            genre: (values[2]
-                .effective_value
-                .as_ref()
-                .unwrap()
-                .string_value
-                .as_ref()
-                .unwrap())
-            .to_owned(),
-            added_by: (values[3]
-                .effective_value
-                .as_ref()
-                .unwrap()
-                .string_value
-                .as_ref()
-                .unwrap())
-            .to_owned(),
+            name,
+            artist,
+            genre,
+            added_by,
         };
         Ok(random_album)
     }
