@@ -8,11 +8,14 @@ use lazy_static::lazy_static;
 use rand::Rng;
 use serenity::async_trait;
 
-const DOC_ID: &str = "1uZBSuuw_oxiR3Lr3MS8lNom2HlUz6_O0Nb6yZA0Vzy4";
 lazy_static! {
     static ref CREDS_JSON_PATH: String = {
         std::env::var("CREDS_JSON_PATH")
             .expect("CREDS_JSON_PATH is a required environment variable")
+    };
+    static ref DOC_ID: String = {
+        std::env::var("SHEET_ID_ALBUM_BOT")
+            .expect("SHEET_ID_ALBUM_BOT is a required environment variable")
     };
 }
 
@@ -94,7 +97,7 @@ impl GoogleSheetsAlbumRepo {
         let (_, spreadsheet) = self
             .hub
             .spreadsheets()
-            .get_by_data_filter(GET_LAST_GENRE_REQUEST.clone(), DOC_ID)
+            .get_by_data_filter(GET_LAST_GENRE_REQUEST.clone(), &DOC_ID)
             .doit()
             .await?;
         let genre = spreadsheet
@@ -117,7 +120,7 @@ impl GoogleSheetsAlbumRepo {
         let (_, spreadsheet) = self
             .hub
             .spreadsheets()
-            .get_by_data_filter(GET_ROTATION_REQUEST.clone(), DOC_ID)
+            .get_by_data_filter(GET_ROTATION_REQUEST.clone(), &DOC_ID)
             .doit()
             .await?;
         let data = spreadsheet
@@ -214,7 +217,7 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
         let (_, spreadsheet) = self
             .hub
             .spreadsheets()
-            .get_by_data_filter(GET_ALBUMS_REQUEST.clone(), DOC_ID)
+            .get_by_data_filter(GET_ALBUMS_REQUEST.clone(), &DOC_ID)
             .doit()
             .await?;
         let rotation = self.get_rotation().await?;
