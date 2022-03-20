@@ -37,17 +37,9 @@ lazy_static! {
             data_filters: Some(vec![GET_ROTATION.clone()]),
             include_grid_data: Some(true),
         };
-    static ref GET_ALBUMS: DataFilter = DataFilter {
-        a1_range: Some("Album Selection!A2:D".to_owned()),
-        developer_metadata_lookup: None,
-        grid_range: None,
-    };
-    static ref GET_ALBUMS_REQUEST: GetSpreadsheetByDataFilterRequest =
-        GetSpreadsheetByDataFilterRequest {
-            data_filters: Some(vec![GET_ALBUMS.clone()]),
-            include_grid_data: Some(true),
-        };
 }
+
+const GET_ALBUMS_RANGE: &str = "Album Selection!A2:D";
 
 #[derive(Clone, Debug)]
 pub struct Album {
@@ -159,35 +151,33 @@ impl GoogleSheetsAlbumRepo {
             .ok_or_else(|| anyhow!(error_msg))
     }
 
-    async fn select_random_album(&self, spreadsheet: &Spreadsheet) -> Result<Album> {
-        let row_data = spreadsheet
-            .sheets
-            .as_ref()
-            .and_then(|sheets| sheets.get(0))
-            .and_then(|sheet| sheet.data.as_ref())
-            .and_then(|data| data.get(0))
-            .and_then(|row| row.row_data.as_ref())
-            .ok_or_else(|| anyhow!("Unable to get row data for random album"))?;
-        let row_count = row_data.len();
+    async fn select_random_album(&self, spreadsheet: &Vec<Vec<String>>) -> Result<Album> {
+        let row_count = spreadsheet.len();
         let num = rand::thread_rng().gen_range(0..row_count);
-        let values = row_data
+        let values = spreadsheet
             .get(num)
-            .as_ref()
-            .and_then(|value| value.values.as_ref())
-            .ok_or_else(|| anyhow!("Error getting cell values"))?;
+            .ok_or_else(|| anyhow!("Error getting cell values"))?
+            .to_owned();
 
-        let artist = self
-            .get_value_from_cell_data(0, values, "Unable to get album artist".to_owned())
-            .await?;
-        let name = self
-            .get_value_from_cell_data(1, values, "Unable to get album name".to_owned())
-            .await?;
-        let genre = self
-            .get_value_from_cell_data(2, values, "Unable to get album genre".to_owned())
-            .await?;
-        let added_by = self
-            .get_value_from_cell_data(3, values, "Unable to get album added_by".to_owned())
-            .await?;
+        let artist = values
+            .get(0)
+            .ok_or_else(|| anyhow!("Unable to get album artist"))?
+            .to_owned();
+
+        let name = values
+            .get(1)
+            .ok_or_else(|| anyhow!("Unable to get album name"))?
+            .to_owned();
+
+        let genre = values
+            .get(2)
+            .ok_or_else(|| anyhow!("Unable to get album genre"))?
+            .to_owned();
+
+        let added_by = values
+            .get(3)
+            .ok_or_else(|| anyhow!("Unable to get album added_by"))?
+            .to_owned();
 
         let random_album = Album {
             name,
@@ -205,14 +195,18 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
         let (_, spreadsheet) = self
             .hub
             .spreadsheets()
-            .get_by_data_filter(GET_ALBUMS_REQUEST.clone(), &DOC_ID)
+            .values_get(&DOC_ID, GET_ALBUMS_RANGE)
             .doit()
             .await?;
+        let albums = &spreadsheet
+            .values
+            .ok_or_else(|| anyhow!("Error fetching albums"))?;
         let rotation = self.get_rotation().await?;
         let album: Album;
         let last_genre = self.get_last_genre().await?;
+
         loop {
-            let try_album = self.select_random_album(&spreadsheet).await?;
+            let try_album = self.select_random_album(albums).await?;
             if !rotation.contains(&try_album.added_by) && try_album.genre != last_genre {
                 album = try_album;
                 break;
