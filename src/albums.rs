@@ -27,19 +27,10 @@ lazy_static! {
             data_filters: Some(vec![GET_LAST_GENRE.clone()]),
             include_grid_data: Some(true),
         };
-    static ref GET_ROTATION: DataFilter = DataFilter {
-        a1_range: Some("Rotation!A1:A4".to_owned()),
-        developer_metadata_lookup: None,
-        grid_range: None,
-    };
-    static ref GET_ROTATION_REQUEST: GetSpreadsheetByDataFilterRequest =
-        GetSpreadsheetByDataFilterRequest {
-            data_filters: Some(vec![GET_ROTATION.clone()]),
-            include_grid_data: Some(true),
-        };
 }
 
 const GET_ALBUMS_RANGE: &str = "Album Selection!A2:D";
+const GET_ROTATION_RANGE: &str = "Rotation!A1:A4";
 
 #[derive(Clone, Debug)]
 pub struct Album {
@@ -109,31 +100,17 @@ impl GoogleSheetsAlbumRepo {
         let (_, spreadsheet) = self
             .hub
             .spreadsheets()
-            .get_by_data_filter(GET_ROTATION_REQUEST.clone(), &DOC_ID)
+            .values_get(&DOC_ID, GET_ROTATION_RANGE)
             .doit()
             .await?;
-        let data = spreadsheet
-            .sheets
-            .as_ref()
-            .and_then(|sheets| sheets.get(0))
-            .and_then(|sheet| sheet.data.as_ref())
-            .and_then(|data| data.get(0))
-            .ok_or_else(|| anyhow!("Unable to get data for rotation"))?;
-        let mut names: HashSet<String> = HashSet::with_capacity(4 as usize);
-        if let Some(row_data) = data.row_data.as_ref() {
-            for name in row_data {
-                if let Some(values) = name.values.as_ref() {
-                    names.insert(
-                        self.get_value_from_cell_data(
-                            0,
-                            values,
-                            "Unable to get name from rotation sheet".to_owned(),
-                        )
-                        .await?,
-                    );
-                };
-            }
-        }
+        let names: HashSet<String> = HashSet::from_iter(
+            spreadsheet
+                .values
+                .ok_or_else(|| "Error getting rotation")
+                .into_iter()
+                .flatten()
+                .flatten(),
+        );
         Ok(names)
     }
 
