@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use anyhow::{anyhow, Result};
-use google_sheets4::api::{CellData, DataFilter, GetSpreadsheetByDataFilterRequest, Spreadsheet};
 use google_sheets4::{hyper, hyper_rustls, oauth2, Sheets};
 use lazy_static::lazy_static;
 use rand::Rng;
@@ -17,20 +16,11 @@ lazy_static! {
         std::env::var("SHEET_ID_ALBUM_BOT")
             .expect("SHEET_ID_ALBUM_BOT is a required environment variable")
     };
-    static ref GET_LAST_GENRE: DataFilter = DataFilter {
-        a1_range: Some("Ratings!C2".to_owned()),
-        developer_metadata_lookup: None,
-        grid_range: None,
-    };
-    static ref GET_LAST_GENRE_REQUEST: GetSpreadsheetByDataFilterRequest =
-        GetSpreadsheetByDataFilterRequest {
-            data_filters: Some(vec![GET_LAST_GENRE.clone()]),
-            include_grid_data: Some(true),
-        };
 }
 
 const GET_ALBUMS_RANGE: &str = "Album Selection!A2:D";
 const GET_ROTATION_RANGE: &str = "Rotation!A1:A4";
+const GET_LAST_GENRE_RANGE: &str = "Ratings!C2";
 
 #[derive(Clone, Debug)]
 pub struct Album {
@@ -77,23 +67,20 @@ impl GoogleSheetsAlbumRepo {
         let (_, spreadsheet) = self
             .hub
             .spreadsheets()
-            .get_by_data_filter(GET_LAST_GENRE_REQUEST.clone(), &DOC_ID)
+            .values_get(&DOC_ID, GET_LAST_GENRE_RANGE)
             .doit()
             .await?;
-        let genre = spreadsheet
-            .sheets
+        let genres: Vec<&String> = spreadsheet
+            .values
             .as_ref()
-            .and_then(|sheets| sheets.get(0))
-            .and_then(|sheet| sheet.data.as_ref())
-            .and_then(|data| data.get(0))
-            .and_then(|row| row.row_data.as_ref())
-            .and_then(|row_data| row_data.get(0))
-            .and_then(|cells| cells.values.as_ref())
-            .and_then(|cell_values| cell_values.get(0))
-            .and_then(|cell_value| cell_value.effective_value.as_ref())
-            .and_then(|effective_value| effective_value.string_value.to_owned())
-            .ok_or_else(|| anyhow!("Unable to get last genre"))?;
-        Ok(genre)
+            .ok_or_else(|| anyhow!("Unable to get last genre"))?
+            .iter()
+            .flatten()
+            .collect::<Vec<&String>>();
+        let genre = genres
+            .get(0)
+            .ok_or_else(|| anyhow!("Error getting last genre"))?;
+        Ok(genre.to_owned().to_owned())
     }
 
     async fn get_rotation(&self) -> Result<HashSet<String>> {
@@ -112,20 +99,6 @@ impl GoogleSheetsAlbumRepo {
                 .flatten(),
         );
         Ok(names)
-    }
-
-    async fn get_value_from_cell_data(
-        &self,
-        cell_position: usize,
-        cell_data: &Vec<CellData>,
-        error_msg: String,
-    ) -> Result<String> {
-        cell_data
-            .get(cell_position)
-            .and_then(|value| value.effective_value.as_ref())
-            .and_then(|effective_value| effective_value.string_value.as_ref())
-            .and_then(|string_value| Some(string_value.to_owned()))
-            .ok_or_else(|| anyhow!(error_msg))
     }
 
     async fn select_random_album(&self, spreadsheet: &Vec<Vec<String>>) -> Result<Album> {
