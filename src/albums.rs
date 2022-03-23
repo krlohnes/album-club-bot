@@ -20,7 +20,7 @@ lazy_static! {
 
 const GET_ALBUMS_RANGE: &str = "Album Selection!A2:D";
 const GET_ROTATION_RANGE: &str = "Rotation!A1:A4";
-const GET_LAST_GENRE_RANGE: &str = "Ratings!C2";
+const GET_LAST_GENRE_RANGE: &str = "Ratings!C2:D2";
 
 #[derive(Clone, Debug)]
 pub struct Album {
@@ -63,24 +63,28 @@ impl GoogleSheetsAlbumRepo {
         Ok(GoogleSheetsAlbumRepo { hub })
     }
 
-    async fn get_last_genre(&self) -> Result<String> {
+    async fn get_last_genre_and_added_by(&self) -> Result<(String, String)> {
         let (_, spreadsheet) = self
             .hub
             .spreadsheets()
             .values_get(&DOC_ID, GET_LAST_GENRE_RANGE)
             .doit()
             .await?;
-        let genres: Vec<&String> = spreadsheet
+        let row: Vec<String> = spreadsheet
             .values
             .as_ref()
             .ok_or_else(|| anyhow!("Unable to get last genre"))?
             .iter()
             .flatten()
-            .collect::<Vec<&String>>();
-        let genre = genres
+            .map(|x| x.to_owned())
+            .collect::<Vec<String>>();
+        let genre = row
             .get(0)
             .ok_or_else(|| anyhow!("Error getting last genre"))?;
-        Ok(genre.to_owned().to_owned())
+        let selected_by = row
+            .get(1)
+            .ok_or_else(|| anyhow!("Error getting last genre"))?;
+        Ok((genre.to_owned(), selected_by.to_owned()))
     }
 
     async fn get_rotation(&self) -> Result<HashSet<String>> {
@@ -153,11 +157,15 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
             .ok_or_else(|| anyhow!("Error fetching albums"))?;
         let rotation = self.get_rotation().await?;
         let album: Album;
-        let last_genre = self.get_last_genre().await?;
+        let (last_genre, last_added_by) = self.get_last_genre_and_added_by().await?;
 
         loop {
             let try_album = self.select_random_album(albums).await?;
-            if !rotation.contains(&try_album.added_by) && try_album.genre != last_genre {
+            if !rotation.contains(&try_album.added_by)
+                && try_album.genre.as_str().to_lowercase() != last_genre.as_str().to_lowercase()
+                && try_album.added_by.as_str().to_lowercase()
+                    != last_added_by.as_str().to_lowercase()
+            {
                 album = try_album;
                 break;
             }
@@ -170,13 +178,13 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
 mod test {
     use super::*;
 
-    //#[tokio::test]
+    #[tokio::test]
     #[allow(dead_code)]
     async fn test_getting_rotation() -> Result<()> {
         env_logger::init();
         let repo = GoogleSheetsAlbumRepo::default().await?;
 
-        let album = match repo.get_rotation().await {
+        let album = match repo.get_last_genre_and_added_by().await {
             Ok(a) => a,
             Err(e) => {
                 println!("{:?}", e);
