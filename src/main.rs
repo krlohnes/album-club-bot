@@ -37,6 +37,21 @@ impl EventHandler for AlbumHandler {
             };
             let response = format!("The next album is {}", album);
             msg.channel_id.say(&ctx, response).await.unwrap();
+        } else if let Some(_) = msg.content.strip_prefix("~album current") {
+            let album = match self.album_repo.get_current().await {
+                Ok(album) => album,
+                Err(e) => {
+                    error!("Error getting a current album {:?}", e);
+                    msg.channel_id
+                        .say(&ctx, ERROR_RESPONSE_FETCH_RANDOM.clone())
+                        .await
+                        .map_err(|e| error!("Error sending message back to channel {:?}", e))
+                        .ok();
+                    return;
+                }
+            };
+            let response = format!("The current album is {}", album);
+            msg.channel_id.say(&ctx, response).await.unwrap();
         }
     }
 }
