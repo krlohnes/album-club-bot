@@ -21,6 +21,7 @@ lazy_static! {
 const GET_ALBUMS_RANGE: &str = "Album Selection!A2:D";
 const GET_ROTATION_RANGE: &str = "Rotation!A1:A4";
 const GET_LAST_GENRE_RANGE: &str = "Ratings!C2:D2";
+const GET_CURRENT_RANGE: &str = "Ratings!A2:D2";
 
 #[derive(Clone, Debug)]
 pub struct Album {
@@ -43,6 +44,7 @@ impl Display for Album {
 #[async_trait]
 pub trait AlbumRepo {
     async fn fetch_random_album(&self) -> Result<Album>;
+    async fn get_current(&self) -> Result<Album>;
 }
 
 pub struct GoogleSheetsAlbumRepo {
@@ -61,6 +63,39 @@ impl GoogleSheetsAlbumRepo {
             auth,
         );
         Ok(GoogleSheetsAlbumRepo { hub })
+    }
+
+    async fn album_from_vec(&self, values: Vec<String>) -> Result<Album> {
+        if values.len() == 0 {
+            Err(anyhow!("No albums found"))
+        } else {
+            let artist = values
+                .get(0)
+                .ok_or_else(|| anyhow!("Unable to get album artist"))?
+                .to_owned();
+
+            let name = values
+                .get(1)
+                .ok_or_else(|| anyhow!("Unable to get album name"))?
+                .to_owned();
+
+            let genre = values
+                .get(2)
+                .ok_or_else(|| anyhow!("Unable to get album genre"))?
+                .to_owned();
+
+            let added_by = values
+                .get(3)
+                .ok_or_else(|| anyhow!("Unable to get album added_by"))?
+                .to_owned();
+
+            Ok(Album {
+                name,
+                artist,
+                genre,
+                added_by,
+            })
+        }
     }
 
     async fn get_last_genre_and_added_by(&self) -> Result<(String, String)> {
@@ -112,39 +147,30 @@ impl GoogleSheetsAlbumRepo {
             .get(num)
             .ok_or_else(|| anyhow!("Error getting cell values"))?
             .to_owned();
-
-        let artist = values
-            .get(0)
-            .ok_or_else(|| anyhow!("Unable to get album artist"))?
-            .to_owned();
-
-        let name = values
-            .get(1)
-            .ok_or_else(|| anyhow!("Unable to get album name"))?
-            .to_owned();
-
-        let genre = values
-            .get(2)
-            .ok_or_else(|| anyhow!("Unable to get album genre"))?
-            .to_owned();
-
-        let added_by = values
-            .get(3)
-            .ok_or_else(|| anyhow!("Unable to get album added_by"))?
-            .to_owned();
-
-        let random_album = Album {
-            name,
-            artist,
-            genre,
-            added_by,
-        };
-        Ok(random_album)
+        self.album_from_vec(values).await
     }
 }
 
 #[async_trait]
 impl AlbumRepo for GoogleSheetsAlbumRepo {
+    async fn get_current(&self) -> Result<Album> {
+        let (_, spreadsheet) = self
+            .hub
+            .spreadsheets()
+            .values_get(&DOC_ID, GET_CURRENT_RANGE)
+            .doit()
+            .await?;
+        let row: Vec<String> = spreadsheet
+            .values
+            .as_ref()
+            .ok_or_else(|| anyhow!("Unable to get last genre"))?
+            .iter()
+            .flatten()
+            .map(|x| x.to_owned())
+            .collect::<Vec<String>>();
+        self.album_from_vec(row).await
+    }
+
     async fn fetch_random_album(&self) -> Result<Album> {
         let (_, spreadsheet) = self
             .hub
