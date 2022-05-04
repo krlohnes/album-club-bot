@@ -163,7 +163,7 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
         let row: Vec<String> = spreadsheet
             .values
             .as_ref()
-            .ok_or_else(|| anyhow!("Unable to get last genre"))?
+            .ok_or_else(|| anyhow!("Unable to get current album"))?
             .iter()
             .flatten()
             .map(|x| x.to_owned())
