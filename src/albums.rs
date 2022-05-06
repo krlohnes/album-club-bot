@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use anyhow::{anyhow, Result};
+use google_sheets4::api::ValueRange;
 use google_sheets4::{hyper, hyper_rustls, oauth2, Sheets};
 use lazy_static::lazy_static;
 use rand::Rng;
@@ -19,7 +20,8 @@ lazy_static! {
 }
 
 const GET_ALBUMS_RANGE: &str = "Album Selection!A2:D";
-const GET_ROTATION_RANGE: &str = "Rotation!A1:A4";
+const GET_ROTATION_RANGE: &str = "Rotation!A1:A10";
+const GET_NAMES: &str = "Rotation!B1:B10";
 const GET_LAST_GENRE_RANGE: &str = "Ratings!C2:D2";
 const GET_CURRENT_RANGE: &str = "Ratings!A2:D2";
 
@@ -29,6 +31,7 @@ pub struct Album {
     pub artist: String,
     pub genre: String,
     pub added_by: String,
+    row: usize,
 }
 
 impl Display for Album {
@@ -65,7 +68,7 @@ impl GoogleSheetsAlbumRepo {
         Ok(GoogleSheetsAlbumRepo { hub })
     }
 
-    async fn album_from_vec(&self, values: Vec<String>) -> Result<Album> {
+    async fn album_from_vec(&self, values: Vec<String>, row: usize) -> Result<Album> {
         if values.len() == 0 {
             Err(anyhow!("No albums found"))
         } else {
@@ -94,6 +97,7 @@ impl GoogleSheetsAlbumRepo {
                 artist,
                 genre,
                 added_by,
+                row,
             })
         }
     }
@@ -140,6 +144,21 @@ impl GoogleSheetsAlbumRepo {
         Ok(names)
     }
 
+    async fn add_name_to_rotation(&self, name: String) -> Result<()> {
+        let value_range = ValueRange {
+            major_dimension: Some("COLUMNS".to_string()),
+            range: Some(GET_ROTATION_RANGE.to_string()),
+            values: Some(vec![vec![name.to_owned()]]),
+        };
+        self.hub
+            .spreadsheets()
+            .values_append(value_range, &DOC_ID, GET_ROTATION_RANGE)
+            .value_input_option("RAW")
+            .doit()
+            .await?;
+        Ok(())
+    }
+
     async fn select_random_album(&self, spreadsheet: &Vec<Vec<String>>) -> Result<Album> {
         let row_count = spreadsheet.len();
         let num = rand::thread_rng().gen_range(0..row_count);
@@ -147,7 +166,7 @@ impl GoogleSheetsAlbumRepo {
             .get(num)
             .ok_or_else(|| anyhow!("Error getting cell values"))?
             .to_owned();
-        self.album_from_vec(values).await
+        self.album_from_vec(values, num).await
     }
 }
 
@@ -168,7 +187,7 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
             .flatten()
             .map(|x| x.to_owned())
             .collect::<Vec<String>>();
-        self.album_from_vec(row).await
+        self.album_from_vec(row, 0).await
     }
 
     async fn fetch_random_album(&self) -> Result<Album> {
@@ -182,6 +201,7 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
             .values
             .ok_or_else(|| anyhow!("Error fetching albums"))?;
         let rotation = self.get_rotation().await?;
+        println!("{:?}", rotation);
         let album: Album;
         let (last_genre, last_added_by) = self.get_last_genre_and_added_by().await?;
 
@@ -192,6 +212,8 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
                 && try_album.added_by.as_str().to_lowercase()
                     != last_added_by.as_str().to_lowercase()
             {
+                self.add_name_to_rotation(try_album.added_by.to_owned())
+                    .await?;
                 album = try_album;
                 break;
             }
