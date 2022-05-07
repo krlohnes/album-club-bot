@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use anyhow::{anyhow, Result};
-use google_sheets4::api::ValueRange;
+use google_sheets4::api::{ClearValuesRequest, ValueRange};
 use google_sheets4::{hyper, hyper_rustls, oauth2, Sheets};
 use lazy_static::lazy_static;
 use rand::Rng;
@@ -126,11 +126,11 @@ impl GoogleSheetsAlbumRepo {
         Ok((genre.to_owned(), selected_by.to_owned()))
     }
 
-    async fn get_rotation(&self) -> Result<HashSet<String>> {
+    async fn get_column_strings_as_hashset(&self, range: &str) -> Result<HashSet<String>> {
         let (_, spreadsheet) = self
             .hub
             .spreadsheets()
-            .values_get(&DOC_ID, GET_ROTATION_RANGE)
+            .values_get(&DOC_ID, range)
             .doit()
             .await?;
         let names: HashSet<String> = HashSet::from_iter(
@@ -144,6 +144,25 @@ impl GoogleSheetsAlbumRepo {
         Ok(names)
     }
 
+    async fn get_names(&self) -> Result<HashSet<String>> {
+        self.get_column_strings_as_hashset(&GET_NAMES).await
+    }
+
+    async fn get_rotation(&self) -> Result<HashSet<String>> {
+        self.get_column_strings_as_hashset(&GET_ROTATION_RANGE)
+            .await
+    }
+
+    async fn is_full_rotation(&self, rotation: HashSet<String>) -> Result<bool> {
+        let names = self.get_names().await?;
+        for name in names {
+            if !rotation.contains(&name) {
+                return Ok(false);
+            }
+        }
+        return Ok(true);
+    }
+
     async fn add_name_to_rotation(&self, name: String) -> Result<()> {
         let value_range = ValueRange {
             major_dimension: Some("COLUMNS".to_string()),
@@ -154,6 +173,16 @@ impl GoogleSheetsAlbumRepo {
             .spreadsheets()
             .values_append(value_range, &DOC_ID, GET_ROTATION_RANGE)
             .value_input_option("RAW")
+            .doit()
+            .await?;
+        Ok(())
+    }
+
+    async fn clear_rotation(&self) -> Result<()> {
+        let req = ClearValuesRequest::default();
+        self.hub
+            .spreadsheets()
+            .values_clear(req, &DOC_ID, GET_ROTATION_RANGE)
             .doit()
             .await?;
         Ok(())
@@ -200,7 +229,7 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
         let albums = &spreadsheet
             .values
             .ok_or_else(|| anyhow!("Error fetching albums"))?;
-        let rotation = self.get_rotation().await?;
+        let mut rotation = self.get_rotation().await?;
         println!("{:?}", rotation);
         let album: Album;
         let (last_genre, last_added_by) = self.get_last_genre_and_added_by().await?;
@@ -214,6 +243,10 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
             {
                 self.add_name_to_rotation(try_album.added_by.to_owned())
                     .await?;
+                rotation.insert(try_album.added_by.to_owned());
+                if self.is_full_rotation(rotation).await? {
+                    self.clear_rotation().await?;
+                }
                 album = try_album;
                 break;
             }
@@ -226,7 +259,7 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
 mod test {
     use super::*;
 
-    #[tokio::test]
+    //#[tokio::test]
     #[allow(dead_code)]
     async fn test_getting_rotation() -> Result<()> {
         env_logger::init();
