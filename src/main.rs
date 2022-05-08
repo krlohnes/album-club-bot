@@ -58,7 +58,15 @@ impl EventHandler for AlbumHandler {
                             .ok();
                     }
                 }
-                None => {}
+                None => {
+                    msg.channel_id
+                        .say(
+                            &ctx,
+                            "I had some trouble trying to find the album on spotify",
+                        )
+                        .await
+                        .ok();
+                }
             }
         } else if let Some(_) = msg.content.strip_prefix("~album current") {
             let album = match self.album_repo.get_current().await {
@@ -75,6 +83,36 @@ impl EventHandler for AlbumHandler {
             };
             let response = format!("The current album is {}", album);
             msg.channel_id.say(&ctx, response).await.ok();
+            //TODO DRY this out.
+            let url = Spotify::fetch_album_link(&album)
+                .await
+                .map_err(|e| error!("Error getting spotify url {:?}", e))
+                .ok();
+            match url {
+                Some(url) => {
+                    if let Some(url) = url {
+                        let spotify = format!("{}", url);
+                        msg.channel_id.say(&ctx, spotify).await.ok();
+                    } else {
+                        msg.channel_id
+                            .say(
+                                &ctx,
+                                "I had some trouble trying to find the album on spotify",
+                            )
+                            .await
+                            .ok();
+                    }
+                }
+                None => {
+                    msg.channel_id
+                        .say(
+                            &ctx,
+                            "I had some trouble trying to find the album on spotify",
+                        )
+                        .await
+                        .ok();
+                }
+            }
         }
     }
 }
