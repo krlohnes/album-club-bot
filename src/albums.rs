@@ -31,7 +31,7 @@ pub struct Album {
     pub artist: String,
     pub genre: String,
     pub added_by: String,
-    row: usize,
+    pub row: usize,
 }
 
 impl Display for Album {
