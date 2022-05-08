@@ -1,8 +1,10 @@
 mod albums;
+mod spotify;
 
 use std::env;
 
 use crate::albums::{AlbumRepo, GoogleSheetsAlbumRepo};
+use crate::spotify::Spotify;
 
 use log::error;
 use serenity::async_trait;
@@ -36,7 +38,28 @@ impl EventHandler for AlbumHandler {
                 }
             };
             let response = format!("The next album is {}", album);
-            msg.channel_id.say(&ctx, response).await.unwrap();
+            msg.channel_id.say(&ctx, response).await.ok();
+            let url = Spotify::fetch_album_link(&album)
+                .await
+                .map_err(|e| error!("Error getting spotify url {:?}", e))
+                .ok();
+            match url {
+                Some(url) => {
+                    if let Some(url) = url {
+                        let spotify = format!("{}", url);
+                        msg.channel_id.say(&ctx, spotify).await.ok();
+                    } else {
+                        msg.channel_id
+                            .say(
+                                &ctx,
+                                "I had some trouble trying to find the album on spotify",
+                            )
+                            .await
+                            .ok();
+                    }
+                }
+                None => {}
+            }
         } else if let Some(_) = msg.content.strip_prefix("~album current") {
             let album = match self.album_repo.get_current().await {
                 Ok(album) => album,
@@ -51,7 +74,7 @@ impl EventHandler for AlbumHandler {
                 }
             };
             let response = format!("The current album is {}", album);
-            msg.channel_id.say(&ctx, response).await.unwrap();
+            msg.channel_id.say(&ctx, response).await.ok();
         }
     }
 }
