@@ -111,9 +111,9 @@ impl EventHandler for AlbumHandler {
                         .ok();
                 }
             }
-        } else if msg.content.strip_prefix("~album person").is_some() {
-            match self.album_repo.get_random_name().await {
-                Ok(album) => album,
+        } else if msg.content.strip_prefix("~reviewer").is_some() {
+            let person = match self.album_repo.get_random_name().await {
+                Ok(person) => person,
                 Err(e) => {
                     error!("Error getting a random person {:?}", e);
                     msg.channel_id
@@ -124,6 +124,11 @@ impl EventHandler for AlbumHandler {
                     return;
                 }
             };
+
+            msg.channel_id
+                .say(&ctx, format!("Next reviewer is {}", person))
+                .await
+                .ok();
         }
     }
 }
