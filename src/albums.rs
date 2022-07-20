@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use google_sheets4::api::{ClearValuesRequest, ValueRange};
@@ -7,6 +8,7 @@ use google_sheets4::{hyper, hyper_rustls, oauth2, Sheets};
 use lazy_static::lazy_static;
 use rand::Rng;
 use serenity::async_trait;
+use tokio::sync::Mutex;
 
 lazy_static! {
     static ref CREDS_JSON_PATH: String = {
@@ -48,10 +50,12 @@ impl Display for Album {
 pub trait AlbumRepo {
     async fn fetch_random_album(&self) -> Result<Album>;
     async fn get_current(&self) -> Result<Album>;
+    async fn get_random_name(&self) -> Result<String>;
 }
 
 pub struct GoogleSheetsAlbumRepo {
     hub: Sheets,
+    persons: Arc<Mutex<Vec<String>>>,
 }
 
 impl GoogleSheetsAlbumRepo {
@@ -65,11 +69,14 @@ impl GoogleSheetsAlbumRepo {
             hyper::Client::builder().build(hyper_rustls::HttpsConnector::with_native_roots()),
             auth,
         );
-        Ok(GoogleSheetsAlbumRepo { hub })
+        Ok(GoogleSheetsAlbumRepo {
+            hub,
+            persons: Arc::new(Mutex::new(Vec::new())),
+        })
     }
 
     async fn album_from_vec(&self, values: Vec<String>, row: usize) -> Result<Album> {
-        if values.len() == 0 {
+        if values.is_empty() {
             Err(anyhow!("No albums found"))
         } else {
             let artist = values
@@ -136,7 +143,7 @@ impl GoogleSheetsAlbumRepo {
         let names: HashSet<String> = HashSet::from_iter(
             spreadsheet
                 .values
-                .ok_or_else(|| "Error getting rotation")
+                .ok_or("Error getting rotation")
                 .into_iter()
                 .flatten()
                 .flatten(),
@@ -145,12 +152,11 @@ impl GoogleSheetsAlbumRepo {
     }
 
     async fn get_names(&self) -> Result<HashSet<String>> {
-        self.get_column_strings_as_hashset(&GET_NAMES).await
+        self.get_column_strings_as_hashset(GET_NAMES).await
     }
 
     async fn get_rotation(&self) -> Result<HashSet<String>> {
-        self.get_column_strings_as_hashset(&GET_ROTATION_RANGE)
-            .await
+        self.get_column_strings_as_hashset(GET_ROTATION_RANGE).await
     }
 
     async fn is_full_rotation(&self, rotation: HashSet<String>) -> Result<bool> {
@@ -160,7 +166,7 @@ impl GoogleSheetsAlbumRepo {
                 return Ok(false);
             }
         }
-        return Ok(true);
+        Ok(true)
     }
 
     async fn add_name_to_rotation(&self, name: String) -> Result<()> {
@@ -188,7 +194,7 @@ impl GoogleSheetsAlbumRepo {
         Ok(())
     }
 
-    async fn select_random_album(&self, spreadsheet: &Vec<Vec<String>>) -> Result<Album> {
+    async fn select_random_album(&self, spreadsheet: &[Vec<String>]) -> Result<Album> {
         let row_count = spreadsheet.len();
         let num = rand::thread_rng().gen_range(0..row_count);
         let values = spreadsheet
@@ -201,6 +207,15 @@ impl GoogleSheetsAlbumRepo {
 
 #[async_trait]
 impl AlbumRepo for GoogleSheetsAlbumRepo {
+    async fn get_random_name(&self) -> Result<String> {
+        let mut lock = self.persons.lock().await;
+        if lock.len() == 0 {
+            *lock = self.get_names().await?.into_iter().collect();
+        }
+        let num = rand::thread_rng().gen_range(0..lock.len());
+
+        Ok(lock.remove(num))
+    }
     async fn get_current(&self) -> Result<Album> {
         let (_, spreadsheet) = self
             .hub
