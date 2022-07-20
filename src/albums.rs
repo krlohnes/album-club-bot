@@ -6,6 +6,7 @@ use anyhow::{anyhow, Result};
 use google_sheets4::api::{ClearValuesRequest, ValueRange};
 use google_sheets4::{hyper, hyper_rustls, oauth2, Sheets};
 use lazy_static::lazy_static;
+use rand::seq::SliceRandom;
 use rand::Rng;
 use serenity::async_trait;
 use tokio::sync::Mutex;
@@ -51,6 +52,7 @@ pub trait AlbumRepo {
     async fn fetch_random_album(&self) -> Result<Album>;
     async fn get_current(&self) -> Result<Album>;
     async fn get_random_name(&self) -> Result<String>;
+    async fn reset_reviewers(&self) -> Result<()>;
 }
 
 pub struct GoogleSheetsAlbumRepo {
@@ -207,14 +209,31 @@ impl GoogleSheetsAlbumRepo {
 
 #[async_trait]
 impl AlbumRepo for GoogleSheetsAlbumRepo {
+    async fn reset_reviewers(&self) -> Result<()> {
+        let mut lock = self.persons.lock().await;
+        let current_album = self.get_current().await?;
+        *lock = self
+            .get_names()
+            .await?
+            .into_iter()
+            .filter(|name| name != &current_album.added_by)
+            .collect();
+        Ok(())
+    }
+
     async fn get_random_name(&self) -> Result<String> {
         let mut lock = self.persons.lock().await;
         if lock.len() == 0 {
-            *lock = self.get_names().await?.into_iter().collect();
+            let current_album = self.get_current().await?;
+            *lock = self
+                .get_names()
+                .await?
+                .into_iter()
+                .filter(|name| name != &current_album.added_by)
+                .collect();
+            lock.shuffle(&mut rand::thread_rng());
         }
-        let num = rand::thread_rng().gen_range(0..lock.len());
-
-        Ok(lock.remove(num))
+        Ok(lock.remove(0))
     }
     async fn get_current(&self) -> Result<Album> {
         let (_, spreadsheet) = self

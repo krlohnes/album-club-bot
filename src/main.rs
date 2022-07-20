@@ -111,6 +111,23 @@ impl EventHandler for AlbumHandler {
                         .ok();
                 }
             }
+        } else if msg.content.strip_prefix("~reviewer reset").is_some() {
+            match self.album_repo.reset_reviewers().await {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("Error resetting reviewer {:?}", e);
+                    msg.channel_id
+                        .say(&ctx, &(*ERROR_RESPONSE_FETCH_RANDOM))
+                        .await
+                        .map_err(|e| error!("Error sending message back to channel {:?}", e))
+                        .ok();
+                    return;
+                }
+            };
+            msg.channel_id
+                .say(&ctx, "Reviewer list has been reset")
+                .await
+                .ok();
         } else if msg.content.strip_prefix("~reviewer").is_some() {
             let person = match self.album_repo.get_random_name().await {
                 Ok(person) => person,
