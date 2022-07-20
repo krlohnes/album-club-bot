@@ -24,13 +24,13 @@ const ERROR_RESPONSE_FETCH_RANDOM: &str = "Try again later!";
 #[async_trait]
 impl EventHandler for AlbumHandler {
     async fn message(&self, ctx: Context, msg: Message) {
-        if let Some(_) = msg.content.strip_prefix("~album next") {
+        if msg.content.strip_prefix("~album next").is_some() {
             let album = match self.album_repo.fetch_random_album().await {
                 Ok(album) => album,
                 Err(e) => {
                     error!("Error getting a random album {:?}", e);
                     msg.channel_id
-                        .say(&ctx, ERROR_RESPONSE_FETCH_RANDOM.clone())
+                        .say(&ctx, &(*ERROR_RESPONSE_FETCH_RANDOM))
                         .await
                         .map_err(|e| error!("Error sending message back to channel {:?}", e))
                         .ok();
@@ -46,8 +46,7 @@ impl EventHandler for AlbumHandler {
             match url {
                 Some(url) => {
                     if let Some(url) = url {
-                        let spotify = format!("{}", url);
-                        msg.channel_id.say(&ctx, spotify).await.ok();
+                        msg.channel_id.say(&ctx, url).await.ok();
                     } else {
                         msg.channel_id
                             .say(
@@ -68,13 +67,13 @@ impl EventHandler for AlbumHandler {
                         .ok();
                 }
             }
-        } else if let Some(_) = msg.content.strip_prefix("~album current") {
+        } else if msg.content.strip_prefix("~album current").is_some() {
             let album = match self.album_repo.get_current().await {
                 Ok(album) => album,
                 Err(e) => {
                     error!("Error getting a current album {:?}", e);
                     msg.channel_id
-                        .say(&ctx, ERROR_RESPONSE_FETCH_RANDOM.clone())
+                        .say(&ctx, &(*ERROR_RESPONSE_FETCH_RANDOM))
                         .await
                         .map_err(|e| error!("Error sending message back to channel {:?}", e))
                         .ok();
@@ -91,8 +90,7 @@ impl EventHandler for AlbumHandler {
             match url {
                 Some(url) => {
                     if let Some(url) = url {
-                        let spotify = format!("{}", url);
-                        msg.channel_id.say(&ctx, spotify).await.ok();
+                        msg.channel_id.say(&ctx, url).await.ok();
                     } else {
                         msg.channel_id
                             .say(
@@ -113,6 +111,19 @@ impl EventHandler for AlbumHandler {
                         .ok();
                 }
             }
+        } else if msg.content.strip_prefix("~album person").is_some() {
+            match self.album_repo.get_random_name().await {
+                Ok(album) => album,
+                Err(e) => {
+                    error!("Error getting a random person {:?}", e);
+                    msg.channel_id
+                        .say(&ctx, &(*ERROR_RESPONSE_FETCH_RANDOM))
+                        .await
+                        .map_err(|e| error!("Error sending message back to channel {:?}", e))
+                        .ok();
+                    return;
+                }
+            };
         }
     }
 }

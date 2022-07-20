@@ -35,7 +35,7 @@ impl Spotify {
             .await?;
         match result {
             SearchResult::Albums(page) => {
-                if page.items.len() == 0 {
+                if page.items.is_empty() {
                     Ok(None)
                 } else {
                     return Ok(Some(
@@ -48,7 +48,7 @@ impl Spotify {
                     ));
                 }
             }
-            _ => return Ok(None),
+            _ => Ok(None),
         }
     }
 }
