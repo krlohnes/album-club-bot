@@ -77,7 +77,7 @@ impl GoogleSheetsAlbumRepo {
         })
     }
 
-    async fn album_from_vec(&self, values: Vec<String>, row: usize) -> Result<Album> {
+    async fn album_from_vec(&self, values: &Vec<String>, row: usize) -> Result<Album> {
         if values.is_empty() {
             Err(anyhow!("No albums found"))
         } else {
@@ -196,14 +196,28 @@ impl GoogleSheetsAlbumRepo {
         Ok(())
     }
 
-    async fn select_random_album(&self, spreadsheet: &[Vec<String>]) -> Result<Album> {
-        let row_count = spreadsheet.len();
+    async fn select_random_album(
+        &self,
+        spreadsheet: &[Vec<String>],
+        rotation: &HashSet<String>,
+        last_genre: &str,
+        last_added_by: &str,
+    ) -> Result<Album> {
+        let mut i = 0;
+        let mut filtered_albums = Vec::new();
+        for x in spreadsheet {
+            let album = self.album_from_vec(x, i).await?;
+            i += 1;
+            if !rotation.contains(&album.added_by)
+                && &album.added_by.to_lowercase() != &last_added_by.to_lowercase()
+                && &album.genre.to_lowercase() != &last_genre.to_lowercase()
+            {
+                filtered_albums.push(album)
+            }
+        }
+        let row_count = filtered_albums.len();
         let num = rand::thread_rng().gen_range(0..row_count);
-        let values = spreadsheet
-            .get(num)
-            .ok_or_else(|| anyhow!("Error getting cell values"))?
-            .to_owned();
-        self.album_from_vec(values, num).await
+        Ok(filtered_albums[num].to_owned())
     }
 }
 
@@ -250,7 +264,7 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
             .flatten()
             .map(|x| x.to_owned())
             .collect::<Vec<String>>();
-        self.album_from_vec(row, 0).await
+        self.album_from_vec(&row, 0).await
     }
 
     async fn fetch_random_album(&self) -> Result<Album> {
@@ -264,26 +278,14 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
             .values
             .ok_or_else(|| anyhow!("Error fetching albums"))?;
         let mut rotation = self.get_rotation().await?;
-        println!("{:?}", rotation);
-        let album: Album;
         let (last_genre, last_added_by) = self.get_last_genre_and_added_by().await?;
-
-        loop {
-            let try_album = self.select_random_album(albums).await?;
-            if !rotation.contains(&try_album.added_by)
-                && try_album.genre.as_str().to_lowercase() != last_genre.as_str().to_lowercase()
-                && try_album.added_by.as_str().to_lowercase()
-                    != last_added_by.as_str().to_lowercase()
-            {
-                self.add_name_to_rotation(try_album.added_by.to_owned())
-                    .await?;
-                rotation.insert(try_album.added_by.to_owned());
-                if self.is_full_rotation(rotation).await? {
-                    self.clear_rotation().await?;
-                }
-                album = try_album;
-                break;
-            }
+        let album = self
+            .select_random_album(albums, &rotation, &last_genre, &last_added_by)
+            .await?;
+        self.add_name_to_rotation(album.added_by.to_owned()).await?;
+        rotation.insert(album.added_by.to_owned());
+        if self.is_full_rotation(rotation).await? {
+            self.clear_rotation().await?;
         }
         Ok(album)
     }
