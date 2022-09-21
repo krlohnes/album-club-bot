@@ -197,7 +197,7 @@ impl EventHandler for AlbumHandler {
 }
 
 //https://discordapp.com/oauth2/authorize?client_id=%954535768796307527%3e&scope=bot&permissions=2147483648
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     env_logger::init();
     let framework = StandardFramework::new()
