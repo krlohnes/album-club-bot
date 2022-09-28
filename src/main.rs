@@ -235,6 +235,7 @@ async fn main() {
         album_repo: Arc::new(Box::new(GoogleSheetsAlbumRepo::default().await.unwrap())),
         next_album: Arc::new(Mutex::new(None)),
     };
+    handler.set_next_album().await;
 
     let mut client = Client::builder(token, GatewayIntents::empty())
         .event_handler(handler)
