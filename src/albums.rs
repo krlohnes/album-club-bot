@@ -71,10 +71,10 @@ impl GoogleSheetsAlbumRepo {
             hyper::Client::builder().build(hyper_rustls::HttpsConnector::with_native_roots()),
             auth,
         );
-        Ok(GoogleSheetsAlbumRepo {
+        return Ok(GoogleSheetsAlbumRepo {
             hub,
             persons: Arc::new(Mutex::new(Vec::new())),
-        })
+        });
     }
 
     async fn album_from_vec(&self, values: &Vec<String>, row: usize) -> Result<Album> {

@@ -2,8 +2,9 @@ mod albums;
 mod spotify;
 
 use std::env;
+use std::sync::Arc;
 
-use crate::albums::{AlbumRepo, GoogleSheetsAlbumRepo};
+use crate::albums::{Album, AlbumRepo, GoogleSheetsAlbumRepo};
 use crate::spotify::Spotify;
 
 use log::error;
@@ -15,18 +16,42 @@ use serenity::model::application::interaction::{Interaction, InteractionResponse
 use serenity::model::gateway::GatewayIntents;
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
+use tokio::sync::Mutex;
 
 #[group]
 struct General;
 
+#[derive(Clone)]
 struct AlbumHandler {
-    album_repo: Box<dyn AlbumRepo + Send + Sync>,
+    next_album: Arc<Mutex<Option<String>>>,
+    album_repo: Arc<Box<dyn AlbumRepo + Send + Sync>>,
 }
 
 const ERROR_RESPONSE_FETCH_RANDOM: &str = "Try again later!";
 const WE_HAVE_OPTIONS_FOR_A_REASON: &str = "C'mon folks, use the options for the slash command!";
 
 impl AlbumHandler {
+    async fn set_next_album(&self) {
+        let next_album = self.fetch_next_album().await;
+        let mut lock = self.next_album.lock().await;
+        let _ = lock.insert(next_album);
+    }
+
+    async fn get_next_album(&self) -> String {
+        let lock = self.next_album.lock().await;
+        let album = if lock.is_some() {
+            lock.as_ref().unwrap().to_owned()
+        } else {
+            "Hold on, I'm still booting up.".to_owned()
+        };
+        drop(lock);
+        let s = self.clone();
+        tokio::spawn(async move {
+            s.set_next_album().await;
+        });
+        album
+    }
+
     async fn get_next_reviewer(&self) -> String {
         match self.album_repo.get_random_name().await {
             Ok(person) => format!("The next reviewer is {}", person),
@@ -68,7 +93,7 @@ impl AlbumHandler {
         }
     }
 
-    async fn get_next_album(&self) -> String {
+    async fn fetch_next_album(&self) -> String {
         let album = match self.album_repo.fetch_random_album().await {
             Ok(album) => album,
             Err(e) => {
@@ -207,7 +232,8 @@ async fn main() {
     // Login with a bot token from the environment
     let token = env::var("DISCORD_TOKEN").expect("token");
     let handler = AlbumHandler {
-        album_repo: Box::new(GoogleSheetsAlbumRepo::default().await.unwrap()),
+        album_repo: Arc::new(Box::new(GoogleSheetsAlbumRepo::default().await.unwrap())),
+        next_album: Arc::new(Mutex::new(None)),
     };
 
     let mut client = Client::builder(token, GatewayIntents::empty())
