@@ -53,6 +53,7 @@ pub trait AlbumRepo {
     async fn get_current(&self) -> Result<Album>;
     async fn get_random_name(&self) -> Result<String>;
     async fn reset_reviewers(&self) -> Result<()>;
+    async fn add_name_to_rotation(&self, name: String) -> Result<()>;
 }
 
 pub struct GoogleSheetsAlbumRepo {
@@ -171,21 +172,6 @@ impl GoogleSheetsAlbumRepo {
         Ok(true)
     }
 
-    async fn add_name_to_rotation(&self, name: String) -> Result<()> {
-        let value_range = ValueRange {
-            major_dimension: Some("COLUMNS".to_string()),
-            range: Some(GET_ROTATION_RANGE.to_string()),
-            values: Some(vec![vec![name.to_owned()]]),
-        };
-        self.hub
-            .spreadsheets()
-            .values_append(value_range, &DOC_ID, GET_ROTATION_RANGE)
-            .value_input_option("RAW")
-            .doit()
-            .await?;
-        Ok(())
-    }
-
     async fn clear_rotation(&self) -> Result<()> {
         let req = ClearValuesRequest::default();
         self.hub
@@ -223,6 +209,21 @@ impl GoogleSheetsAlbumRepo {
 
 #[async_trait]
 impl AlbumRepo for GoogleSheetsAlbumRepo {
+    async fn add_name_to_rotation(&self, name: String) -> Result<()> {
+        let value_range = ValueRange {
+            major_dimension: Some("COLUMNS".to_string()),
+            range: Some(GET_ROTATION_RANGE.to_string()),
+            values: Some(vec![vec![name.to_owned()]]),
+        };
+        self.hub
+            .spreadsheets()
+            .values_append(value_range, &DOC_ID, GET_ROTATION_RANGE)
+            .value_input_option("RAW")
+            .doit()
+            .await?;
+        Ok(())
+    }
+
     async fn reset_reviewers(&self) -> Result<()> {
         let mut lock = self.persons.lock().await;
         let current_album = self.get_current().await?;
@@ -282,7 +283,6 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
         let album = self
             .select_random_album(albums, &rotation, &last_genre, &last_added_by)
             .await?;
-        self.add_name_to_rotation(album.added_by.to_owned()).await?;
         rotation.insert(album.added_by.to_owned());
         if self.is_full_rotation(rotation).await? {
             self.clear_rotation().await?;

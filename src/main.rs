@@ -21,9 +21,27 @@ use tokio::sync::Mutex;
 #[group]
 struct General;
 
+struct AlbumAndLink {
+    album: Album,
+    link: Option<String>,
+}
+
+impl AlbumAndLink {
+    fn as_message(&self) -> String {
+        if let Some(link) = &self.link {
+            format!("The next album is {} \n {}", self.album, link)
+        } else {
+            format!(
+                "The next album is {} \n I had some trouble finding it on Spotify though.",
+                self.album
+            )
+        }
+    }
+}
+
 #[derive(Clone)]
 struct AlbumHandler {
-    next_album: Arc<Mutex<Option<String>>>,
+    next_album: Arc<Mutex<Option<AlbumAndLink>>>,
     album_repo: Arc<Box<dyn AlbumRepo + Send + Sync>>,
 }
 
@@ -32,7 +50,7 @@ const WE_HAVE_OPTIONS_FOR_A_REASON: &str = "C'mon folks, use the options for the
 
 impl AlbumHandler {
     async fn set_next_album(&self) {
-        let next_album = self.fetch_next_album().await;
+        let next_album = self.fetch_next_album().await.unwrap();
         let mut lock = self.next_album.lock().await;
         let _ = lock.insert(next_album);
     }
@@ -42,14 +60,15 @@ impl AlbumHandler {
         let album = if lock.is_some() {
             lock.as_ref().unwrap().to_owned()
         } else {
-            "Hold on, I'm still booting up.".to_owned()
+            return "Hold on, I'm still booting up.".to_owned();
         };
-        drop(lock);
+        let added_by = (&album.album.added_by).clone();
         let s = self.clone();
         tokio::spawn(async move {
+            s.album_repo.add_name_to_rotation(added_by).await.unwrap();
             s.set_next_album().await;
         });
-        album
+        album.as_message()
     }
 
     async fn get_next_reviewer(&self) -> String {
@@ -93,12 +112,12 @@ impl AlbumHandler {
         }
     }
 
-    async fn fetch_next_album(&self) -> String {
+    async fn fetch_next_album(&self) -> anyhow::Result<AlbumAndLink> {
         let album = match self.album_repo.fetch_random_album().await {
             Ok(album) => album,
             Err(e) => {
                 error!("Error getting a random album {:?}", e);
-                return ERROR_RESPONSE_FETCH_RANDOM.to_owned();
+                return Err(anyhow::anyhow!(ERROR_RESPONSE_FETCH_RANDOM.to_owned()));
             }
         };
         let url = Spotify::fetch_album_link(&album)
@@ -106,22 +125,8 @@ impl AlbumHandler {
             .map_err(|e| error!("Error getting spotify url {:?}", e))
             .ok();
         match url {
-            Some(url) => {
-                if let Some(url) = url {
-                    format!("The next album is {} \n {}", album, url)
-                } else {
-                    format!(
-                        "The next album is {} \n I had some trouble finding it on Spotify though.",
-                        album
-                    )
-                }
-            }
-            None => {
-                format!(
-                    "The next album is {} \n I had some trouble finding the album on Spotify though.",
-                    album
-                )
-            }
+            Some(link) => Ok(AlbumAndLink { album, link }),
+            None => Ok(AlbumAndLink { album, link: None }),
         }
     }
 }
