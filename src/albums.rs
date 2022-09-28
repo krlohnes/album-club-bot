@@ -221,6 +221,11 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
             .value_input_option("RAW")
             .doit()
             .await?;
+        let mut rotation = self.get_rotation().await?;
+        rotation.insert(name);
+        if self.is_full_rotation(rotation).await? {
+            self.clear_rotation().await?;
+        }
         Ok(())
     }
 
@@ -278,15 +283,11 @@ impl AlbumRepo for GoogleSheetsAlbumRepo {
         let albums = &spreadsheet
             .values
             .ok_or_else(|| anyhow!("Error fetching albums"))?;
-        let mut rotation = self.get_rotation().await?;
+        let rotation = self.get_rotation().await?;
         let (last_genre, last_added_by) = self.get_last_genre_and_added_by().await?;
         let album = self
             .select_random_album(albums, &rotation, &last_genre, &last_added_by)
             .await?;
-        rotation.insert(album.added_by.to_owned());
-        if self.is_full_rotation(rotation).await? {
-            self.clear_rotation().await?;
-        }
         Ok(album)
     }
 }
