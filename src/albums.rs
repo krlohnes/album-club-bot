@@ -69,7 +69,14 @@ impl GoogleSheetsAlbumRepo {
             .await
             .expect("failed to create authenticator");
         let hub = Sheets::new(
-            hyper::Client::builder().build(hyper_rustls::HttpsConnector::with_native_roots()),
+            hyper::Client::builder().build(
+                hyper_rustls::HttpsConnectorBuilder::new()
+                    .with_native_roots()
+                    .https_or_http()
+                    .enable_http1()
+                    .enable_http2()
+                    .build(),
+            ),
             auth,
         );
         return Ok(GoogleSheetsAlbumRepo {

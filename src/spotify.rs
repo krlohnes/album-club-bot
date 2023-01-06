@@ -19,15 +19,15 @@ impl Spotify {
     pub async fn fetch_album_link(album: &Album) -> Result<Option<String>> {
         let creds =
             Credentials::from_env().ok_or_else(|| anyhow!("Unable to get Spotify creds"))?;
-        let mut spotify = ClientCredsSpotify::new(creds);
+        let spotify = ClientCredsSpotify::new(creds);
 
         spotify.request_token().await?;
 
         let result = spotify
             .search(
                 &album_to_query(album),
-                &SearchType::Album,
-                Some(&Market::Country(Country::UnitedStates)),
+                SearchType::Album,
+                Some(Market::Country(Country::UnitedStates)),
                 None,
                 Some(1),
                 None,
@@ -60,7 +60,6 @@ mod test {
     #[tokio::test]
     #[allow(dead_code)]
     async fn test_getting_rotation() -> Result<()> {
-        let spotify = Spotify {};
         let album = Album {
             name: "Syro".to_owned(),
             artist: "Aphex Twin".to_owned(),
