@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::albums::{Album, AlbumRepo, GoogleSheetsAlbumRepo};
 use crate::spotify::Spotify;
 
+use anyhow::{anyhow, Result};
 use log::error;
 use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
@@ -49,44 +50,48 @@ const ERROR_RESPONSE_FETCH_RANDOM: &str = "Try again later!";
 const WE_HAVE_OPTIONS_FOR_A_REASON: &str = "C'mon folks, use the options for the slash command!";
 
 impl AlbumHandler {
-    async fn set_next_album(&self) {
-        let next_album = self.fetch_next_album().await.unwrap();
+    async fn set_next_album(&self) -> Result<()> {
+        let next_album = self.fetch_next_album().await?;
         let mut lock = self.next_album.lock().await;
         let _ = lock.insert(next_album);
+        Ok(())
     }
 
-    async fn get_next_album(&self) -> String {
+    async fn get_next_album(&self) -> Result<String> {
         let lock = self.next_album.lock().await;
         let album = if lock.is_some() {
-            lock.as_ref().unwrap().to_owned()
+            lock.as_ref()
+                .ok_or_else(|| anyhow!("Too much rock and roll!"))?
         } else {
-            return "Hold on, I'm still booting up.".to_owned();
+            return Ok(String::from("Hold on, I'm still booting up."));
         };
         let added_by = (&album.album.added_by).clone();
         let s = self.clone();
         tokio::spawn(async move {
             s.album_repo.add_name_to_rotation(added_by).await.unwrap();
-            s.set_next_album().await;
+            s.set_next_album()
+                .await
+                .unwrap_or_else(|_| println!("Error setting next album"))
         });
-        album.as_message()
+        Ok(album.as_message())
     }
 
-    async fn get_next_reviewer(&self) -> String {
+    async fn get_next_reviewer(&self) -> Result<String> {
         match self.album_repo.get_random_name().await {
-            Ok(person) => format!("The next reviewer is {}", person),
+            Ok(person) => Ok(format!("The next reviewer is {}", person)),
             Err(e) => {
                 error!("Error getting a random person {:?}", e);
-                ERROR_RESPONSE_FETCH_RANDOM.to_owned()
+                Ok(String::from(ERROR_RESPONSE_FETCH_RANDOM))
             }
         }
     }
 
     async fn reset_reviewers(&self) -> String {
         match self.album_repo.reset_reviewers().await {
-            Ok(_) => "Reviewer list has been reset".to_owned(),
+            Ok(_) => String::from("Reviewer list has been reset"),
             Err(e) => {
                 error!("Error resetting reviewer {:?}", e);
-                ERROR_RESPONSE_FETCH_RANDOM.to_owned()
+                String::from(ERROR_RESPONSE_FETCH_RANDOM)
             }
         }
     }
@@ -139,8 +144,16 @@ impl EventHandler for AlbumHandler {
                 "album" => {
                     let result = match command.data.options.get(0) {
                         Some(option) => {
-                            match option.value.as_ref().unwrap().as_str().unwrap().as_ref() {
-                                "next" => self.get_next_album().await,
+                            match option
+                                .value
+                                .clone()
+                                .unwrap_or_else(|| {
+                                    serde_json::Value::String(String::from("Error getting command"))
+                                })
+                                .as_str()
+                                .unwrap()
+                            {
+                                "next" => self.get_next_album().await.unwrap(),
                                 "current" => self.get_current_album().await,
                                 e => {
                                     error!("Got command {:?}", e);
@@ -156,16 +169,19 @@ impl EventHandler for AlbumHandler {
                     let result = match command.data.options.get(0) {
                         Some(option) => {
                             match option.value.as_ref().unwrap().as_str().unwrap().as_ref() {
-                                "next" => self.get_next_reviewer().await,
+                                "next" => self
+                                    .get_next_reviewer()
+                                    .await
+                                    .unwrap_or_else(|_| String::from(WE_HAVE_OPTIONS_FOR_A_REASON)),
                                 "reset" => self.reset_reviewers().await,
-                                _ => WE_HAVE_OPTIONS_FOR_A_REASON.to_owned(),
+                                _ => String::from(WE_HAVE_OPTIONS_FOR_A_REASON),
                             }
                         }
-                        None => WE_HAVE_OPTIONS_FOR_A_REASON.to_owned(),
+                        None => String::from(WE_HAVE_OPTIONS_FOR_A_REASON),
                     };
                     result
                 }
-                _ => "Go home, you're drunk :(".to_string(),
+                _ => String::from("Go home, you're drunk :("),
             };
 
             if let Err(why) = command
@@ -226,9 +242,8 @@ impl EventHandler for AlbumHandler {
     }
 }
 
-//https://discordapp.com/oauth2/authorize?client_id=%954535768796307527%3e&scope=bot&permissions=2147483648
 #[tokio::main(flavor = "current_thread")]
-async fn main() {
+async fn main() -> Result<()> {
     env_logger::init();
     let framework = StandardFramework::new()
         .configure(|c| c.prefix("~")) // set the bot's prefix to "~"
@@ -240,7 +255,7 @@ async fn main() {
         album_repo: Arc::new(Box::new(GoogleSheetsAlbumRepo::default().await.unwrap())),
         next_album: Arc::new(Mutex::new(None)),
     };
-    handler.set_next_album().await;
+    handler.set_next_album().await?;
 
     let mut client = Client::builder(token, GatewayIntents::empty())
         .event_handler(handler)
@@ -252,4 +267,5 @@ async fn main() {
     if let Err(why) = client.start().await {
         println!("An error occurred while running the client: {:?}", why);
     }
+    Ok(())
 }
